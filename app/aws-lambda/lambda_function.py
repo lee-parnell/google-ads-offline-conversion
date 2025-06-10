@@ -6,7 +6,7 @@ import boto3
 from datetime import datetime, timedelta
 from boto3.dynamodb.conditions import Key, Attr
 import services
-from config import kommo_config
+from config import kommo_config, google_ads_config
 
 
 # .env constants
@@ -16,13 +16,12 @@ CLICK_LOG_TTL_MINUTES = int(os.getenv("CLICK_LOG_TTL_MINUTES", "15"))
 logger = logging.getLogger()
 logger.setLevel("INFO")
 
-
 dynamodb = boto3.resource("dynamodb")
 click_log_table = dynamodb.Table(f"{TABLE_PREFIX}_click_logs")
 
-
 # services
 kommo_service = services.KommoService(config=kommo_config)
+google_ads_service = services.GoogleAdsService(config=google_ads_config)
 
 
 def lambda_handler(event, context):
@@ -46,7 +45,7 @@ def click_log_handler(event):
     if not gclid:
         logger.error("Event object does not have gclid field.")
         return {
-            "statucCode": 400,
+            "statuscCode": 400,
             "message": "Missing required parameter gclid",
         }
 
@@ -59,7 +58,9 @@ def update_lead_handler():
         ScanIndexForward=False,
         Limit=1,
     )
-
+    if google_ads_service.config.is_enabled:
+        # TODO:logig for uploading offline conversion
+        pass
     return update_lead(items=response.get("Items", []))
 
 def persist_clicklog_to_db(event):
