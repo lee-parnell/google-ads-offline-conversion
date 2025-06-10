@@ -59,7 +59,7 @@ def update_lead_handler():
         Limit=1,
     )
     if google_ads_service.config.is_enabled:
-        # TODO:logig for uploading offline conversion
+        # TODO:logic for uploading offline conversion
         pass
     return update_lead(items=response.get("Items", []))
 
