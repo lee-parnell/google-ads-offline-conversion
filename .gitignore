@@ -1,0 +1,5 @@
+.DS_STORE
+.venv
+.env
+*.ipynb
+google-ads-credentials.json
