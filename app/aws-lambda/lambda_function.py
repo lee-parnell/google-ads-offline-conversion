@@ -45,7 +45,7 @@ def click_log_handler(event):
     if not gclid:
         logger.error("Event object does not have gclid field.")
         return {
-            "statuscCode": 400,
+            "statusCode": 400,
             "message": "Missing required parameter gclid",
         }
 

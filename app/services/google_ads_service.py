@@ -57,7 +57,7 @@ class GoogleAdsService:
         conversion_upload_service = client.get_service("ConversionUploadService")
         return conversion_upload_service.upload_click_conversions(
             customer_id=client_customer_id,
-            conversions=[click_conversion]
+            conversions=[click_conversion],
             partial_failure=True
         )
 
