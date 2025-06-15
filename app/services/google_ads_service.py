@@ -1,6 +1,6 @@
+from enum import Enum
 import logging
 import re
-import sys
 import hashlib
 
 from google.ads.googleads.client import GoogleAdsClient
@@ -8,13 +8,45 @@ from config import GoogleAdsConfig
 
 
 class GoogleAdsService:
+    """ Services for interacting with Google Ads API to upload offline conversions.
+    """
+    class ConversionType(Enum):
+        """ Supported offline conversion types used in Google Ads
+
+        Keys map to specific conversion actions configured in
+        Google Ads UI.A Enum values are used to retrive the 
+        corresponding conversion_action_id from the config.
+        """
+        MESSAGE_RECEIVED = "kommo_message_received"
+        APPOINTMENT_MADE = "appointment_made"
+        CONVERTED_LEAD = "converted_lead"
+
     def __init__(self, config: GoogleAdsConfig):
+        """ Initializes the GoogleAdsService using the passed config.
+
+        Args:
+            config (GoogleAdsConfig): Google Ads configuration object.
+        """
         self.config = config
     
     def _get_client(self):
+        """ Creates a Google Ads Client constructed by config dict.
+        """
         return GoogleAdsClient.load_from_dict(self.config.get_config_dict())
 
     def upload_offline_conversion(self, raw_lead, conversion_type):
+        """ Uploads an offline conversion to Google Ads using the specified conversion type.
+
+        Args: 
+            raw_lead: a dict that contains lead details such as email, phone, gclid, etc.
+            conversion_type: an enum that indicated the corresponding conversion action
+
+        Returns:
+            MutateClickConversionResponse: Response from Google Ads API.
+
+        Raises:
+            GoogleAdsException: If the click conversion upload fails due to a Google Ads API error.
+        """
         client = self._get_client()
         client_customer_id = self.config.client_customer_id
         conversion_action_id = self.config.conversion_action_ids.get(conversion_type)
@@ -47,6 +79,8 @@ class GoogleAdsService:
         
         if raw_lead.get("order_id"):
             click_conversion.order_id = raw_lead["order_id"]
+        if raw_lead.get("gbraid"):
+            click_conversion.gbraid= raw_lead["gclid"]
         if raw_lead.get("gclid"):
             click_conversion.gclid = raw_lead["gclid"]
         if raw_lead["ad_user_data_consent"]:
@@ -60,7 +94,6 @@ class GoogleAdsService:
             conversions=[click_conversion],
             partial_failure=True
         )
-
 
     def normalize_and_hash_email_address(self, email_address):
         """Returns the result of normalizing and hashing an email address.
@@ -79,17 +112,11 @@ class GoogleAdsService:
 
         # Check that there are at least two segments
         if len(email_parts) > 1:
-            # Checks whether the domain of the email address is either "gmail.com"
-            # or "googlemail.com". If this regex does not match then this statement
-            # will evaluate to None.
             if re.match(r"^(gmail|googlemail)\.com$", email_parts[1]):
-                # Removes any '.' characters from the portion of the email address
-                # before the domain if the domain is gmail.com or googlemail.com.
                 email_parts[0] = email_parts[0].replace(".", "")
                 normalized_email = "@".join(email_parts)
 
         return self.normalize_and_hash(normalized_email)
-
 
     def normalize_and_hash(self, s):
         """Normalizes and hashes a string with SHA-256.
