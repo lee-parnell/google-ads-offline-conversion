@@ -6,8 +6,7 @@ import boto3
 from datetime import datetime, timedelta
 from boto3.dynamodb.conditions import Key, Attr
 import services
-from config import kommo_config, google_ads_config
-
+import config
 
 # .env constants
 TABLE_PREFIX = os.getenv("TABLE_PREFIX", "default")
@@ -18,6 +17,9 @@ logger.setLevel("INFO")
 
 dynamodb = boto3.resource("dynamodb")
 click_log_table = dynamodb.Table(f"{TABLE_PREFIX}_click_logs")
+
+# configs
+kommo_config, google_ads_config = config.load_config()
 
 # services
 kommo_service = services.KommoService(config=kommo_config)
