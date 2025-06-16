@@ -1,6 +1,5 @@
 import os
 
-
 class KommoConfig():
     def __init__(
         self,
@@ -42,6 +41,7 @@ class GoogleAdsConfig():
             "json_key_file_path": self.json_key_file_path,
             "use_proto_plus": self.use_proto_plus
         }
+
 def load_config():
     """ Loads config objects using env variables.
 
