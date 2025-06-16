@@ -1,6 +1,7 @@
 import requests
 import logging
 
+from typing import Any
 from config import KommoConfig
 
 
@@ -46,12 +47,12 @@ class KommoService:
     def get_incoming_leads(
         self, is_sorted=True, filter_pipeline=True, page=1, limit=10
     ):
-        params = {"limit": limit, "page": page}
+        params: dict[str, Any] = {"limit": limit, "page": page}
 
-        if filter_pipeline:
-            params["filter[pipeline_id]"] = self.config.target_pipeline_id
         if is_sorted:
             params["order[created_at]"] = "desc"
+        if filter_pipeline:
+            params["filter[pipeline_id]"] = self.config.target_pipeline_id
 
         return self._request("GET", "/leads/unsorted", params=params)
 
