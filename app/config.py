@@ -58,6 +58,7 @@ def load_config():
         field_ids={
             "source": int(os.getenv("KOMMO_SOURCE_FIELD_ID")),
             "gclid": int(os.getenv("KOMMO_GCLID_FIELD_ID")),
+            "gbraid": int(os.getenv("KOMMO_GBRAID_FIELD_ID")),
             "page_path": int(os.getenv("KOMMO_PAGEPATH_FIELD_ID")),
         },
     )

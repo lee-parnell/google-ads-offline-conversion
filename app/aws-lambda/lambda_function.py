@@ -42,13 +42,13 @@ def lambda_handler(event, context):
 
 def click_log_handler(event):
     body = json.loads(event["body"] or {})
-    gclid = body.get("gclid", None)
+    gclid, gbraid = body.get("gclid"), body.get("gbraid")
 
-    if not gclid:
-        logger.error("Event object does not have gclid field.")
+    if not (gclid or gbraid):
+        logger.error("Event object does not have gclid or gbraid field.")
         return {
             "statusCode": 400,
-            "message": "Missing required parameter gclid",
+            "message": "Missing required parameter gclid and gbraid",
         }
 
     return persist_clicklog_to_db(body)
@@ -75,6 +75,7 @@ def persist_clicklog_to_db(event):
                 "pk": "click",
                 "page_path": event.get("page_path"),
                 "gclid": event.get("gclid"),
+                "gbraid": event.get("gbraid"),
                 "created_at": int(created_at.timestamp()),
                 "expires_at": int(expires_at.timestamp()),
                 "matched": False,
@@ -132,7 +133,7 @@ def update_lead(items):
 
     if datetime.now().timestamp() <= items[0]["expires_at"]:
         expires_at = items[0]["expires_at"]
-        gclid = items[0]["gclid"]
+        gclid, gbraid = items[0]["gclid"], items[0].get("gbraid")
         page_path = items[0]["page_path"]
 
         try:
@@ -146,6 +147,7 @@ def update_lead(items):
                 lead_id=lead_id,
                 source="cpc",
                 gclid=gclid,
+                gbraid=gbraid,
                 page_path=page_path
             )
 

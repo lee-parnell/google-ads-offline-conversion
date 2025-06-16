@@ -66,7 +66,7 @@ class KommoService:
             leads["_embedded"]["unsorted"][0]["_embedded"]["leads"][0]["id"]
         )
 
-    def update_lead(self, lead_id, source, gclid=None, page_path="/"):
+    def update_lead(self, lead_id, source, gclid=None, gbraid=None, page_path="/"):
         custom_fields_values = [
             {
                 "field_id": self.config.field_ids["source"],
@@ -75,6 +75,10 @@ class KommoService:
             {
                 "field_id": self.config.field_ids["gclid"],
                 "values": [{"value": gclid}],
+            },
+            {
+                "field_id": self.config.field_ids["gbraid"],
+                "values": [{"value": gbraid}],
             },
             {
                 "field_id": self.config.field_ids["page_path"],
