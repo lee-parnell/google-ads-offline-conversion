@@ -3,3 +3,7 @@
 .env
 *.ipynb
 google-ads-credentials.json
+*_cleanup.txt
+package*
+
+

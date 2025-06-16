@@ -214,6 +214,7 @@ def update_lead(items, conversion_type, lead_id=None):
                 "statusCode": 500,
                 "message": "Lead with cpc source could not be updated.",
             }
+
 def extract_lead_id(event):
     body = event.get("body", {})
     

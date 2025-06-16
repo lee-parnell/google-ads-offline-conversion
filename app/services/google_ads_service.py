@@ -78,6 +78,8 @@ class GoogleAdsService:
         Raises:
             GoogleAdsException: If the click conversion upload fails due to a Google Ads API error.
         """
+        logger.debug("Received raw lead %s", raw_lead)
+
         client = self._get_client()
 
         client_customer_id = self.config.client_customer_id
