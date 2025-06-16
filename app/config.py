@@ -60,6 +60,9 @@ def load_config():
             "gclid": int(os.getenv("KOMMO_GCLID_FIELD_ID")),
             "gbraid": int(os.getenv("KOMMO_GBRAID_FIELD_ID")),
             "page_path": int(os.getenv("KOMMO_PAGEPATH_FIELD_ID")),
+            "conversion_value": int(os.getenv("KOMMO_CONVERSION_VALUE_FIELD_ID")),
+            "currency_code": os.getenv("KOMMO_CURRENCY_CODE_FIELD_ID"),
+            "conversion_time": os.getenv("KOMMO_CONVERSION_TIME_FIELD_ID"),
         },
     )
 
