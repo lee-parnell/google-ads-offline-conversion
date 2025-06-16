@@ -1,9 +1,12 @@
+
 import hashlib
 import logging
 import re
 import sys
+import threading
 
 from config import GoogleAdsConfig
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from google.ads.googleads.client import GoogleAdsClient
 
@@ -22,9 +25,21 @@ class GoogleAdsService:
         Google Ads UI. Enum values are used to retrive the 
         corresponding conversion_action_id from the config.
         """
-        MESSAGE_RECEIVED = "kommo_message_received"
-        APPOINTMENT_MADE = "appointment_made"
-        CONVERTED_LEAD = "converted_lead"
+        MESSAGE_RECEIVED = ("kommo_message_received", 5)
+        APPOINTMENT_MADE = ("appointment_made", 40)
+        CONVERTED_LEAD = ("converted_lead", 500)
+
+        def __init__(self, ads_conversion_name, default_conversion_value):
+            self._conversion_name = ads_conversion_name
+            self._default_conversion_value = default_conversion_value
+
+        @property
+        def conversion_name(self):
+            return self._conversion_name
+
+        @property
+        def default_conversion_value(self):
+            return self._default_conversion_value
 
     def __init__(self, config: GoogleAdsConfig):
         """ Initializes the GoogleAdsService using the passed config.
@@ -33,11 +48,22 @@ class GoogleAdsService:
             config (GoogleAdsConfig): Google Ads configuration object.
         """
         self.config = config
+        self.client = None
+        self._lock = threading.Lock()
     
     def _get_client(self):
         """ Creates a Google Ads Client constructed by config dict.
         """
-        return GoogleAdsClient.load_from_dict(self.config.get_config_dict())
+
+        # lazy singleton pattern
+        # double check is added because of critical section
+        if not self._client:
+            with self._lock:
+                if not self._client:
+                    self._client =  GoogleAdsClient.load_from_dict(
+                        self.config.get_config_dict()
+                    )
+        return self._client
 
     def upload_offline_conversion(self, raw_lead, conversion_type):
         """ Uploads an offline conversion to Google Ads using the specified conversion type.
@@ -55,9 +81,9 @@ class GoogleAdsService:
         client = self._get_client()
 
         client_customer_id = self.config.client_customer_id
-        conversion_action_id = self.config.conversion_action_ids.get(conversion_type)
+        conversion_action_id = self.config.conversion_action_ids.get(conversion_type.conversion_name)
 
-        click_conversion = self._create_click_conversion(client, raw_lead) 
+        click_conversion = self._create_click_conversion(client, raw_lead, conversion_type) 
         self._add_user_identifiers(client, raw_lead, click_conversion)
        
         conversion_action_service = client.get_service("ConversionActionService")
@@ -75,7 +101,7 @@ class GoogleAdsService:
             partial_failure=True
         )
     
-    def _create_click_conversion(self, client, raw_lead):
+    def _create_click_conversion(self, client, raw_lead, conversion_type):
         """ Creates a Google Ads API ClickConversion object from raw lead data.
 
             Args: 
@@ -87,20 +113,20 @@ class GoogleAdsService:
             """
         click_conversion = client.get_type("ClickConversion")
 
-        click_conversion.conversion_date_time = raw_lead["conversion_date_time"]
-        click_conversion.conversion_value = raw_lead.get("conversion_value", 1)
+        click_conversion.conversion_date_time = self._format_time(
+            raw_lead.get("conversion_date_time", datetime.now(timezone.utc).timestamp()))
+
+        click_conversion.conversion_value = float(raw_lead.get("conversion_value", conversion_type.default_conversion_value))
         click_conversion.currency_code = raw_lead.get("currency_code", "USD")
         
         if raw_lead.get("order_id"):
             click_conversion.order_id = raw_lead["order_id"]
         if raw_lead.get("gbraid"):
-            click_conversion.gbraid= raw_lead["gclid"]
+            click_conversion.gbraid= raw_lead["gbraid"]
         if raw_lead.get("gclid"):
             click_conversion.gclid = raw_lead["gclid"]
-        if raw_lead["ad_user_data_consent"]:
-            click_conversion.consent.ad_user_data = client.enums.ConsentStatusEnum[
-                "GRANTED"
-            ]
+        
+        click_conversion.consent.ad_user_data = client.enums.ConsentStatusEnum["GRANTED"]
         
         return click_conversion
 
@@ -114,18 +140,18 @@ class GoogleAdsService:
         """
         if raw_lead.get("email"):
             email_identifier = client.get_type("UserIdentifier")
-            email_identifier.hashed_email = self.normalize_and_hash_email_address(
+            email_identifier.hashed_email = self._normalize_and_hash_email_address(
                 raw_lead["email"]
             )
             click_conversion.user_identifiers.append(email_identifier)
         if raw_lead.get("phone"):
             phone_identifier = client.get_type("UserIdentifier")
-            phone_identifier.hashed_phone_number = self.normalize_and_hash(
+            phone_identifier.hashed_phone_number = self._normalize_and_hash(
                 raw_lead["phone"]
             )
             click_conversion.user_identifiers.append(phone_identifier)
  
-    def normalize_and_hash_email_address(self, email_address):
+    def _normalize_and_hash_email_address(self, email_address):
         """Returns the result of normalizing and hashing an email address.
 
         For this use case, Google Ads requires removal of any '.' characters
@@ -146,9 +172,9 @@ class GoogleAdsService:
                 email_parts[0] = email_parts[0].replace(".", "")
                 normalized_email = "@".join(email_parts)
 
-        return self.normalize_and_hash(normalized_email)
+        return self._normalize_and_hash(normalized_email)
 
-    def normalize_and_hash(self, s):
+    def _normalize_and_hash(self, s):
         """Normalizes and hashes a string with SHA-256.
 
         Private customer data must be hashed during upload, as described at:
@@ -161,3 +187,23 @@ class GoogleAdsService:
             A normalized (lowercase, removed whitespace) and SHA-256 hashed string.
         """
         return hashlib.sha256(s.strip().lower().encode()).hexdigest()
+    
+    def _format_time(self, utc_timestamp):
+        """ Formats the time as it is specified in Google Ads API.
+            
+            Args:
+                utc_timestamp(float): Unix timestamp
+
+            Returns: 
+                Formatted datetime string. 
+                (e.g.): yyyy-mm-dd hh:mm:ss+|-hh:mm, 2019-01-01 12:32:45-08:00
+        """
+        # convert timestamp to datetime in UTC
+        datetime_utc = datetime.fromtimestamp(utc_timestamp, tz=timezone.utc)
+
+        # convert to GMT+3 time for consistency
+        gmt_plus_3 = timezone(timedelta(hours=3))
+        time = datetime_utc.astimezone(gmt_plus_3)
+        formatted_time = time.strftime("%Y-%m-%d %H:%M:%S%z")
+
+        return formatted_time[:-2] + ":" + formatted_time[-2:]

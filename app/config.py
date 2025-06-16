@@ -63,6 +63,8 @@ def load_config():
             "conversion_value": int(os.getenv("KOMMO_CONVERSION_VALUE_FIELD_ID")),
             "currency_code": os.getenv("KOMMO_CURRENCY_CODE_FIELD_ID"),
             "conversion_time": os.getenv("KOMMO_CONVERSION_TIME_FIELD_ID"),
+            "phone": int(os.getenv("KOMMO_PHONE_FIELD_ID")),
+            "email": int(os.getenv("KOMMO_EMAIL_FIELD_ID")),
         },
     )
 

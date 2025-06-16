@@ -12,6 +12,7 @@ class KommoService:
     def __init__(self, config: KommoConfig):
         self.config = config
 
+    @property
     def _headers(self):
         return {
             "Authorization": f"Bearer {self.config.access_token}",
@@ -33,7 +34,7 @@ class KommoService:
                 url=url,
                 params=params,
                 json=json,
-                headers=self._headers(),
+                headers=self._headers,
                 timeout=10,
             )
             response.raise_for_status()
@@ -43,6 +44,70 @@ class KommoService:
             raise RuntimeError(
                 f"{method.upper()} request to {endpoint} failed"
             ) from e
+
+    def _get_contact_field_ids(self):
+        return {
+            self.config.field_ids.get("phone"),
+            self.config.field_ids.get("email"),
+        }
+
+    def _get_lead_field_ids(self):
+        return {
+            self.config.field_ids.get("gclid"),
+            self.config.field_ids.get("gbraid"),
+            self.config.field_ids.get("conversion_value"),
+            self.config.field_ids.get("currency_code"),
+            self.config.field_ids.get("conversion_time"),
+        }
+
+    def _create_order_id(self, lead_id):
+        return {"order_id": f"order_{lead_id}"}
+
+    def _get_contact_data(self, contact_id):
+        """ Returns phone and email values of contact.
+            
+            Args: 
+                contact_id(int): Kommo contact id associated with the lead.
+
+            Returns:
+                Dictionary that contains email and phone values
+        """
+
+        contact_data = {}
+        contact_field_ids = self._get_contact_field_ids()
+        
+        contact = self._request("GET", f"/contacts/{contact_id}")
+
+        for field in contact.get("custom_field_values", []):
+            field_id = field.get("field_id")
+            if field_id in contact_field_ids:
+                contact_data[field["field_name"].lower()] = field.get("values")[0]["value"]
+        return contact_data 
+
+    def construct_raw_lead(self, lead_id):
+        """ Returns a dict that contains lead info.
+            
+            Args:
+                lead_id(int): Kommo lead id.
+
+            Returns:
+                A dictionary that contains lead details such as email, phone, gclid, etc.
+        """
+        contact_data = self.get_contact_info(lead_id)
+        order_id = self._create_order_id(lead_id)
+
+        lead_data = {}
+        raw_lead = self.get_lead_by_id(lead_id=lead_id)
+        lead_field_ids = self._get_lead_field_ids()
+
+        for field in raw_lead["custom_field_values"]:
+            if field.get("field_id") in lead_field_ids:
+                lead_data[field.get("field_name")] = field["values"][0]["value"]
+
+        return {**lead_data, **contact_data, **order_id}
+
+    def get_lead_by_id(self, lead_id):
+        return self._request("GET", f"/leads/{lead_id}")
 
     def get_incoming_leads(
         self, is_sorted=True, filter_pipeline=True, page=1, limit=10
@@ -57,7 +122,24 @@ class KommoService:
         return self._request("GET", "/leads/unsorted", params=params)
 
     def get_incoming_lead_by_id(self, lead_id):
-        return self._request("GET", f"/leads/unsorted/{lead_id}")
+        params = {"with": "contacts"}
+
+        return self._request("GET", f"/leads/unsorted/{lead_id}", params=params)
+
+    def get_contact_info(self, lead_id):
+        """ Retrives email and phone values using the lead id.
+
+            Args:
+                lead_id(int): Kommo lead id.
+
+            Returns:
+                Dictionary that contains email and phone values
+        """
+
+        lead_info = self.get_incoming_lead_by_id(lead_id=lead_id)
+        contact_id = lead_info["_embedded"]["contact"][0]
+
+        return self._get_contact_data(contact_id=contact_id)
 
     def get_latest_incoming_lead_id(self):
         leads = self.get_incoming_leads()

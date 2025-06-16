@@ -2,9 +2,13 @@ import json
 import os
 import logging
 import boto3
+import base64
 
 from datetime import datetime, timedelta
 from boto3.dynamodb.conditions import Key, Attr
+from services.google_ads_service import GoogleAdsService
+from urllib.parse import parse_qsl, unquote 
+
 import services
 import config
 
@@ -12,9 +16,7 @@ import config
 TABLE_PREFIX = os.getenv("TABLE_PREFIX", "default")
 CLICK_LOG_TTL_MINUTES = int(os.getenv("CLICK_LOG_TTL_MINUTES", "15"))
 
-logger = logging.getLogger()
-logger.setLevel("INFO")
-
+# aws resources
 dynamodb = boto3.resource("dynamodb")
 click_log_table = dynamodb.Table(f"{TABLE_PREFIX}_click_logs")
 
@@ -24,6 +26,10 @@ kommo_config, google_ads_config = config.load_config()
 # services
 kommo_service = services.KommoService(config=kommo_config)
 google_ads_service = services.GoogleAdsService(config=google_ads_config)
+
+# logger
+logger = logging.getLogger()
+logger.setLevel("INFO")
 
 
 def lambda_handler(event, context):
@@ -36,7 +42,13 @@ def lambda_handler(event, context):
         return click_log_handler(event)
 
     if path == "/update-lead" and method == "POST":
-        return update_lead_handler()
+        conversion_type_key = event.get("queryStringParameters", {}).get("conversion_type")
+        conversion_type = GoogleAdsService.ConversionType[conversion_type_key.upper()]
+
+        if conversion_type == GoogleAdsService.ConversionType.MESSAGE_RECEIVED:
+            return update_lead_handler(conversion_type=conversion_type)
+
+        return upload_conversion_handler(event=event, conversion_type=conversion_type)
 
     return {"statusCode": 404, "message": "Invalid path"}
 
@@ -53,17 +65,44 @@ def click_log_handler(event):
 
     return persist_clicklog_to_db(body)
 
-def update_lead_handler():
+def update_lead_handler(conversion_type):
     response = click_log_table.query(
         KeyConditionExpression=Key("pk").eq("click"),
         FilterExpression=Attr("matched").eq(False),
         ScanIndexForward=False,
         Limit=1,
     )
-    if google_ads_service.config.is_enabled:
-        # TODO:logic for uploading offline conversion
-        pass
-    return update_lead(items=response.get("Items", []))
+    return update_lead(items=response.get("Items", []), conversion_type=conversion_type)
+
+def upload_conversion_handler(event, conversion_type):
+    lead_id = extract_lead_id(event=event)
+    
+    try:
+        google_ads_service.upload_offline_conversion(
+            raw_lead=kommo_service.construct_raw_lead(lead_id=lead_id),
+            conversion_type=conversion_type
+        )
+
+        logger.info(
+            "Successfully uploaded click conversion. Conversion type: %s",
+           conversion_type.conversion_name 
+        )
+
+        return {
+            "statusCode": 200,
+            "message": "Conversion uploaded successfully.",
+        }
+    except RuntimeError as e:
+        logger.error(
+            "Something went wrong while persisting the click log. \
+            Exception: %s",
+            e,
+        )
+
+        return {
+            "statusCode": 500,
+            "message": "Something went wrong while persisting the click log.",
+        }
 
 def persist_clicklog_to_db(event):
     created_at = datetime.now()
@@ -104,8 +143,10 @@ def persist_clicklog_to_db(event):
         }
 
 
-def update_lead(items):
-    lead_id = kommo_service.get_latest_incoming_lead_id()
+def update_lead(items, conversion_type, lead_id=None):
+    if not lead_id:
+        lead_id = kommo_service.get_latest_incoming_lead_id()
+
     if not items:
         try:
             kommo_service.update_lead(
@@ -152,6 +193,11 @@ def update_lead(items):
             )
 
             logger.info("Lead updated with cpc source.")
+            
+            google_ads_service.upload_offline_conversion(
+                raw_lead=kommo_service.construct_raw_lead(lead_id=lead_id),
+                conversion_type=conversion_type
+            )
 
             return {
                 "statusCode": 200,
@@ -168,3 +214,16 @@ def update_lead(items):
                 "statusCode": 500,
                 "message": "Lead with cpc source could not be updated.",
             }
+def extract_lead_id(event):
+    body = event.get("body", {})
+    
+    decoded_str = base64.b64decode(body).decode("utf-8")
+    query_str = unquote(decoded_str)
+    payload = dict(parse_qsl(query_str))
+
+    return payload["leads[add][0][id]"]
+
+
+
+
+
