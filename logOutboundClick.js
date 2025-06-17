@@ -1,6 +1,6 @@
 <script>
 (function() {
-    var endpoint = "https://rg6u2gsl87.execute-api.eu-central-1.amazonaws.com/outbound-click-logs"; 
+    var endpoint = "https:/YOUR_LAMBDA_API_GATEWAY_URL/outbound-click-logs"; 
     var params = new URLSearchParams(window.location.search);
     var gclid = params.get("gclid");
     var gbraid = params.get("gbraid");
