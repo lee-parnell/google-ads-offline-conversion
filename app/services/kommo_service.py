@@ -78,7 +78,7 @@ class KommoService:
         
         contact = self._request("GET", f"/contacts/{contact_id}")
 
-        for field in contact.get("custom_field_values", []):
+        for field in contact.get("custom_fields_values", []):
             field_id = field.get("field_id")
             if field_id in contact_field_ids:
                 contact_data[field["field_name"].lower()] = field.get("values")[0]["value"]
@@ -100,14 +100,16 @@ class KommoService:
         raw_lead = self.get_lead_by_id(lead_id=lead_id)
         lead_field_ids = self._get_lead_field_ids()
 
-        for field in raw_lead["custom_field_values"]:
+        for field in raw_lead["custom_fields_values"]:
             if field.get("field_id") in lead_field_ids:
                 lead_data[field.get("field_name")] = field["values"][0]["value"]
 
         return {**lead_data, **contact_data, **order_id}
 
     def get_lead_by_id(self, lead_id):
-        return self._request("GET", f"/leads/{lead_id}")
+        params = {"with": "contacts"}
+
+        return self._request("GET", f"/leads/{lead_id}", params=params)
 
     def get_incoming_leads(
         self, is_sorted=True, filter_pipeline=True, page=1, limit=10
@@ -136,8 +138,8 @@ class KommoService:
                 Dictionary that contains email and phone values
         """
 
-        lead_info = self.get_incoming_lead_by_id(lead_id=lead_id)
-        contact_id = lead_info["_embedded"]["contact"][0]
+        lead_info = self.get_lead_by_id(lead_id=lead_id)
+        contact_id = lead_info["_embedded"]["contacts"][0]["id"]
 
         return self._get_contact_data(contact_id=contact_id)
 
