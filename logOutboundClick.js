@@ -7,7 +7,6 @@
 
     if (!gclid && !gbraid) return;
 
-
     var payload = JSON.stringify({
         gclid: gclid,
         gbraid: gbraid,
