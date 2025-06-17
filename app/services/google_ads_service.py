@@ -2,7 +2,6 @@
 import hashlib
 import logging
 import re
-import sys
 import threading
 
 from config import GoogleAdsConfig
@@ -12,8 +11,6 @@ from google.ads.googleads.client import GoogleAdsClient
 
 # logger 
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.StreamHandler(sys.stdout))
-
 
 class GoogleAdsService:
     """ Services for interacting with Google Ads API to upload offline conversions.
@@ -48,7 +45,7 @@ class GoogleAdsService:
             config (GoogleAdsConfig): Google Ads configuration object.
         """
         self.config = config
-        self.client = None
+        self._client = None
         self._lock = threading.Lock()
     
     def _get_client(self):
@@ -78,31 +75,36 @@ class GoogleAdsService:
         Raises:
             GoogleAdsException: If the click conversion upload fails due to a Google Ads API error.
         """
-        logger.debug("Received raw lead %s", raw_lead)
+        logger.info("Received raw lead %s", raw_lead)
+        try:
 
-        client = self._get_client()
+            client = self._get_client()
 
-        client_customer_id = self.config.client_customer_id
-        conversion_action_id = self.config.conversion_action_ids.get(conversion_type.conversion_name)
+            client_customer_id = self.config.client_customer_id
+            conversion_action_id = self.config.conversion_action_ids.get(conversion_type.conversion_name)
 
-        click_conversion = self._create_click_conversion(client, raw_lead, conversion_type) 
-        self._add_user_identifiers(client, raw_lead, click_conversion)
-       
-        conversion_action_service = client.get_service("ConversionActionService")
-        click_conversion.conversion_action = (
-            conversion_action_service.conversion_action_path(
-                client_customer_id, conversion_action_id
+            click_conversion = self._create_click_conversion(client, raw_lead, conversion_type) 
+            self._add_user_identifiers(client, raw_lead, click_conversion)
+           
+            conversion_action_service = client.get_service("ConversionActionService")
+            click_conversion.conversion_action = (
+                conversion_action_service.conversion_action_path(
+                    client_customer_id, conversion_action_id
+                )
             )
-        )
+            
+            conversion_upload_service = client.get_service("ConversionUploadService")
+            
+            res = conversion_upload_service.upload_click_conversions(
+                customer_id=client_customer_id,
+                conversions=[click_conversion],
+                partial_failure=True
+            )
+            logger.info("Google Ads response: %s", res)
+            return res
+        except Exception as e:
+            logger.info("exception occured %s", e)
 
-        conversion_upload_service = client.get_service("ConversionUploadService")
-
-        return conversion_upload_service.upload_click_conversions(
-            customer_id=client_customer_id,
-            conversions=[click_conversion],
-            partial_failure=True
-        )
-    
     def _create_click_conversion(self, client, raw_lead, conversion_type):
         """ Creates a Google Ads API ClickConversion object from raw lead data.
 
@@ -114,22 +116,25 @@ class GoogleAdsService:
                 A ClickConversion object that is populated with lead data.
             """
         click_conversion = client.get_type("ClickConversion")
-
         click_conversion.conversion_date_time = self._format_time(
             raw_lead.get("conversion_date_time", datetime.now(timezone.utc).timestamp()))
-
         click_conversion.conversion_value = float(raw_lead.get("conversion_value", conversion_type.default_conversion_value))
         click_conversion.currency_code = raw_lead.get("currency_code", "USD")
-        
+ 
         if raw_lead.get("order_id"):
             click_conversion.order_id = raw_lead["order_id"]
-        if raw_lead.get("gbraid"):
-            click_conversion.gbraid= raw_lead["gbraid"]
+
+        # Ads API does not allow multiple click identifiers
+        # Store gbraid if gclid is not present, since gclid has 
+        # more data point
         if raw_lead.get("gclid"):
             click_conversion.gclid = raw_lead["gclid"]
-        
-        click_conversion.consent.ad_user_data = client.enums.ConsentStatusEnum["GRANTED"]
-        
+        elif raw_lead.get("gbraid"):
+            click_conversion.gbraid= raw_lead["gbraid"]
+
+        click_conversion.consent.ad_user_data = client.enums.ConsentStatusEnum.GRANTED
+        click_conversion.consent.ad_personalization = client.enums.ConsentStatusEnum.GRANTED
+
         return click_conversion
 
     def _add_user_identifiers(self, client, raw_lead, click_conversion):
@@ -143,14 +148,17 @@ class GoogleAdsService:
         if raw_lead.get("email"):
             email_identifier = client.get_type("UserIdentifier")
             email_identifier.hashed_email = self._normalize_and_hash_email_address(
-                raw_lead["email"]
+                raw_lead["email"].lower()
             )
+            email_identifier.user_identifier_source = client.enums.UserIdentifierSourceEnum.FIRST_PARTY
             click_conversion.user_identifiers.append(email_identifier)
+
         if raw_lead.get("phone"):
             phone_identifier = client.get_type("UserIdentifier")
             phone_identifier.hashed_phone_number = self._normalize_and_hash(
                 raw_lead["phone"]
             )
+            phone_identifier.user_identifier_source = client.enums.UserIdentifierSourceEnum.FIRST_PARTY
             click_conversion.user_identifiers.append(phone_identifier)
  
     def _normalize_and_hash_email_address(self, email_address):
