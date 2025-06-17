@@ -1,3 +1,4 @@
+import time
 import json
 import os
 import logging
@@ -222,7 +223,7 @@ def extract_lead_id(event):
     query_str = unquote(decoded_str)
     payload = dict(parse_qsl(query_str))
 
-    return payload["leads[add][0][id]"]
+    return payload["leads[status][0][id]"]
 
 
 
