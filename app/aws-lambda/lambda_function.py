@@ -8,7 +8,7 @@ import base64
 from datetime import datetime, timedelta
 from boto3.dynamodb.conditions import Key, Attr
 from services.google_ads_service import GoogleAdsService
-from urllib.parse import parse_qsl, unquote 
+from urllib.parse import parse_qsl, unquote
 
 import services
 import config
@@ -43,15 +43,41 @@ def lambda_handler(event, context):
         return click_log_handler(event)
 
     if path == "/update-lead" and method == "POST":
-        conversion_type_key = event.get("queryStringParameters", {}).get("conversion_type")
-        conversion_type = GoogleAdsService.ConversionType[conversion_type_key.upper()]
+        query_string_params = event.get("queryStringParameters", {})
+
+        conversion_type_key = query_string_params.get("conversion_type")
+        conversion_type = GoogleAdsService.ConversionType[
+            conversion_type_key.upper()
+        ]
+
+        is_conversion_adjustment = (
+            query_string_params.get("is_adjustment") == "True"
+        )
+        is_manual_import = query_string_params.get("is_manual") == "True"
+
+        if is_conversion_adjustment:
+            return upload_conversion_adjustment_handler(
+                event=event,
+                conversion_type=conversion_type,
+            )
 
         if conversion_type == GoogleAdsService.ConversionType.MESSAGE_RECEIVED:
-            return update_lead_handler(conversion_type=conversion_type)
+            if is_manual_import:
+                return upload_conversion_handler(
+                    event=event,
+                    conversion_type=conversion_type,
+                    lead_id=extract_incoming_lead_id(event),
+                )
+            return update_lead_handler(
+                conversion_type=conversion_type, event=event
+            )
 
-        return upload_conversion_handler(event=event, conversion_type=conversion_type)
+        return upload_conversion_handler(
+            event=event, conversion_type=conversion_type
+        )
 
     return {"statusCode": 404, "message": "Invalid path"}
+
 
 def click_log_handler(event):
     body = json.loads(event["body"] or {})
@@ -66,27 +92,33 @@ def click_log_handler(event):
 
     return persist_clicklog_to_db(body)
 
-def update_lead_handler(conversion_type):
+
+def update_lead_handler(conversion_type, event):
     response = click_log_table.query(
         KeyConditionExpression=Key("pk").eq("click"),
         FilterExpression=Attr("matched").eq(False),
         ScanIndexForward=False,
         Limit=1,
     )
-    return update_lead(items=response.get("Items", []), conversion_type=conversion_type)
+    return update_lead(
+        items=response.get("Items", []),
+        conversion_type=conversion_type,
+        lead_id=extract_incoming_lead_id(event),
+    )
 
-def upload_conversion_handler(event, conversion_type):
-    lead_id = extract_lead_id(event=event)
-    
+
+def upload_conversion_handler(event, conversion_type, lead_id=None):
+    lead_id = extract_lead_id(event=event) if lead_id is None else lead_id
+
     try:
         google_ads_service.upload_offline_conversion(
             raw_lead=kommo_service.construct_raw_lead(lead_id=lead_id),
-            conversion_type=conversion_type
+            conversion_type=conversion_type,
         )
 
         logger.info(
             "Successfully uploaded click conversion. Conversion type: %s",
-           conversion_type.conversion_name 
+            conversion_type.conversion_name,
         )
 
         return {
@@ -104,6 +136,35 @@ def upload_conversion_handler(event, conversion_type):
             "statusCode": 500,
             "message": "Something went wrong while persisting the click log.",
         }
+
+
+def upload_conversion_adjustment_handler(event, conversion_type):
+    try:
+        lead_id = extract_incoming_lead_id(event)
+        google_ads_service.upload_offline_conversion_adjustment(
+            conversion_type=conversion_type, lead_id=lead_id
+        )
+        logger.info(
+            "Successfully uploaded click conversion adjustment. Conversion type: %s",
+            conversion_type.conversion_name,
+        )
+
+        return {
+            "statusCode": 200,
+            "message": "Conversion adjustment uploaded successfully.",
+        }
+    except RuntimeError as e:
+        logger.error(
+            "Something went wrong while uploading the click conversion adjustment. \
+            Exception: %s",
+            e,
+        )
+
+        return {
+            "statusCode": 500,
+            "message": "Something went wrong while uploading the click conversion adjustment.",
+        }
+
 
 def persist_clicklog_to_db(event):
     created_at = datetime.now()
@@ -144,10 +205,7 @@ def persist_clicklog_to_db(event):
         }
 
 
-def update_lead(items, conversion_type, lead_id=None):
-    if not lead_id:
-        lead_id = kommo_service.get_latest_incoming_lead_id()
-
+def update_lead(items, conversion_type, lead_id):
     if not items:
         try:
             kommo_service.update_lead(
@@ -190,14 +248,14 @@ def update_lead(items, conversion_type, lead_id=None):
                 source="cpc",
                 gclid=gclid,
                 gbraid=gbraid,
-                page_path=page_path
+                page_path=page_path,
             )
 
             logger.info("Lead updated with cpc source.")
-            
+
             google_ads_service.upload_offline_conversion(
                 raw_lead=kommo_service.construct_raw_lead(lead_id=lead_id),
-                conversion_type=conversion_type
+                conversion_type=conversion_type,
             )
 
             return {
@@ -216,9 +274,10 @@ def update_lead(items, conversion_type, lead_id=None):
                 "message": "Lead with cpc source could not be updated.",
             }
 
+
 def extract_lead_id(event):
     body = event.get("body", {})
-    
+
     decoded_str = base64.b64decode(body).decode("utf-8")
     query_str = unquote(decoded_str)
     payload = dict(parse_qsl(query_str))
@@ -226,6 +285,11 @@ def extract_lead_id(event):
     return payload["leads[status][0][id]"]
 
 
+def extract_incoming_lead_id(event):
+    body = event.get("body", {})
 
+    decoded_str = base64.b64decode(body).decode("utf-8")
+    query_str = unquote(decoded_str)
+    payload = dict(parse_qsl(query_str))
 
-
+    return payload["leads[add][0][id]"]
