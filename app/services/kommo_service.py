@@ -64,34 +64,36 @@ class KommoService:
         return {"order_id": f"order_{lead_id}"}
 
     def _get_contact_data(self, contact_id):
-        """ Returns phone and email values of contact.
-            
-            Args: 
-                contact_id(int): Kommo contact id associated with the lead.
+        """Returns phone and email values of contact.
 
-            Returns:
-                Dictionary that contains email and phone values
+        Args:
+            contact_id(int): Kommo contact id associated with the lead.
+
+        Returns:
+            Dictionary that contains email and phone values
         """
 
         contact_data = {}
         contact_field_ids = self._get_contact_field_ids()
-        
+
         contact = self._request("GET", f"/contacts/{contact_id}")
 
         for field in contact.get("custom_fields_values", []):
             field_id = field.get("field_id")
             if field_id in contact_field_ids:
-                contact_data[field["field_name"].lower()] = field.get("values")[0]["value"]
-        return contact_data 
+                contact_data[field["field_name"].lower()] = field.get("values")[
+                    0
+                ]["value"]
+        return contact_data
 
     def construct_raw_lead(self, lead_id):
-        """ Returns a dict that contains lead info.
-            
-            Args:
-                lead_id(int): Kommo lead id.
+        """Returns a dict that contains lead info.
 
-            Returns:
-                A dictionary that contains lead details such as email, phone, gclid, etc.
+        Args:
+            lead_id(int): Kommo lead id.
+
+        Returns:
+            A dictionary that contains lead details such as email, phone, gclid, etc.
         """
         contact_data = self.get_contact_info(lead_id)
         order_id = self._create_order_id(lead_id)
@@ -100,7 +102,7 @@ class KommoService:
         raw_lead = self.get_lead_by_id(lead_id=lead_id)
         lead_field_ids = self._get_lead_field_ids()
 
-        for field in raw_lead["custom_fields_values"]:
+        for field in raw_lead.get("custom_fields_values", {}):
             if field.get("field_id") in lead_field_ids:
                 lead_data[field.get("field_name")] = field["values"][0]["value"]
 
@@ -129,13 +131,13 @@ class KommoService:
         return self._request("GET", f"/leads/unsorted/{lead_id}", params=params)
 
     def get_contact_info(self, lead_id):
-        """ Retrives email and phone values using the lead id.
+        """Retrives email and phone values using the lead id.
 
-            Args:
-                lead_id(int): Kommo lead id.
+        Args:
+            lead_id(int): Kommo lead id.
 
-            Returns:
-                Dictionary that contains email and phone values
+        Returns:
+            Dictionary that contains email and phone values
         """
 
         lead_info = self.get_lead_by_id(lead_id=lead_id)
@@ -150,7 +152,9 @@ class KommoService:
             leads["_embedded"]["unsorted"][0]["_embedded"]["leads"][0]["id"]
         )
 
-    def update_lead(self, lead_id, source, gclid=None, gbraid=None, page_path="/"):
+    def update_lead(
+        self, lead_id, source, gclid=None, gbraid=None, page_path="/"
+    ):
         custom_fields_values = [
             {
                 "field_id": self.config.field_ids["source"],
