@@ -1,13 +1,20 @@
 <script>
 (function() {
-    function getCookies(trackingCookieNames){
-        var cookies = document.cookie 
-            .split('; ')
-            .map(pair => pair.split('='))
-            .map(([key, val]) => [decodeURIComponent(key), decodeURIComponent(val)])
-            .filter(([key]) => trackingCookieNames.includes(key));
-        return Object.fromEntries(cookies)
-    }
+    function getCookies(names) {
+        var all = document.cookie.split('; ');
+        var out = {};
+        for (var i = 0; i < all.length; i++) {
+          var pair = all[i].split('=');
+          var key  = decodeURIComponent(pair[0]);
+          var val  = decodeURIComponent(pair[1] || '');
+          for (var j = 0; j < names.length; j++) {
+            if (key === names[j]) {
+              out[key] = val;
+            }
+          }
+        }
+        return out;
+  }
 
     var endpoint = "https:/YOUR_LAMBDA_API_GATEWAY_URL/outbound-click-logs"; 
 
