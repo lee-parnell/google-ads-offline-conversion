@@ -88,7 +88,6 @@ class GoogleAdsService:
             click_conversion = self._create_click_conversion(
                 client, raw_lead, conversion_type
             )
-            self._add_user_identifiers(client, raw_lead, click_conversion)
 
             conversion_action_service = client.get_service(
                 "ConversionActionService"
@@ -218,6 +217,14 @@ class GoogleAdsService:
             click_conversion.gclid = raw_lead["gclid"]
         elif raw_lead.get("gbraid"):
             click_conversion.gbraid = raw_lead["gbraid"]
+
+        # Add user identifirers if gbraid is not set due to the IOS14+ ATT specifications
+        if not click_conversion.gbraid:
+            self._add_user_identifiers(
+                client=client,
+                raw_lead=raw_lead,
+                click_conversion=click_conversion,
+            )
 
         click_conversion.consent.ad_user_data = (
             client.enums.ConsentStatusEnum.GRANTED
