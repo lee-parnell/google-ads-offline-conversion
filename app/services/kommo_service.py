@@ -19,11 +19,12 @@ class KommoService:
             "accept": "application/json",
         }
 
-    def _build_url(self, endpoint):
-        return (
-            self.config.base_url.format(subdomain=self.config.subdomain)
-            + endpoint
-        )
+    def _build_url(self, endpoint, api_version="v4"):
+        base_url = self.config.base_url.format(
+            subdomain=self.config.subdomain
+        ).replace("v4", f"{api_version}")
+
+        return base_url + endpoint
 
     def _request(self, method, endpoint, params=None, json=None):
         url = self._build_url(endpoint)
@@ -85,6 +86,56 @@ class KommoService:
                     0
                 ]["value"]
         return contact_data
+
+    def _get_lead_ids_by_pipeline(
+        self, pipeline_id, stage_id, starts_at, ends_at
+    ):
+        """Returns a filtered list based on pipeline id that contains lead ids.
+
+        Args:
+            pipeline_id(int): Kommo pipeline stage id.
+            starts_at(int): Unix timestamp that denotes task starting time.
+            ends_at(int): Unix timestamp that denotes task ending time.
+
+        Returns:
+            A list that contains lead ids.
+        """
+
+        params = {
+            "filter[statuses][0][pipeline_id]": pipeline_id,
+            "filter[statuses][0][status_id]": stage_id,
+            "filter[closest_task_at][from]": starts_at,
+            "filter[closest_task_at][to]": ends_at,
+        }
+
+        raw_filtered_leads = self._request("GET", "/leads", params=params)
+
+        return list(
+            map(
+                lambda lead: lead["id"],
+                raw_filtered_leads["_embedded"]["leads"],
+            )
+        )
+
+    def run_salesbot_on_leads(self, salesbot_id, lead_ids):
+        """Executes salesbot on each lead.
+
+        Args:
+            salesbot_id(int): Kommo salesbot id.
+            lead_ids(list): A list that contains Kommo lead ids.
+        """
+        url = self._build_url(endpoint="/salesbot/run", api_version="v2")
+
+        body = [
+            {
+                "bot_id": salesbot_id,
+                "entity_id": id,
+                "entity_type": 2,  # denotes lead entity type in Kommo
+            }
+            for id in lead_ids
+        ]
+
+        requests.post(url=url, json=body, headers=self._headers)
 
     def construct_raw_lead(self, lead_id):
         """Returns a dict that contains lead info.
