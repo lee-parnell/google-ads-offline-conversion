@@ -47,6 +47,7 @@ def lambda_handler(event, context):
 
     if path == "/update-lead" and method == "POST":
         query_string_params = event.get("queryStringParameters", {})
+        multi_query_string_params = event.get("multiValueQueryStringParameters", {}) or {}
 
         conversion_type_key = query_string_params.get("conversion_type")
         conversion_type = GoogleAdsService.ConversionType[
@@ -58,21 +59,25 @@ def lambda_handler(event, context):
         )
         is_manual_import = query_string_params.get("is_manual") == "True"
 
+        custom_fields = multi_query_string_params.get("custom_fields", [])
+
         if is_conversion_adjustment:
             return upload_conversion_adjustment_handler(
                 event=event,
                 conversion_type=conversion_type,
             )
 
-        if conversion_type == GoogleAdsService.ConversionType.MESSAGE_RECEIVED:
+        if custom_fields or conversion_type == GoogleAdsService.ConversionType.MESSAGE_RECEIVED:
             if is_manual_import:
                 return upload_conversion_handler(
                     event=event,
                     conversion_type=conversion_type,
                     lead_id=extract_incoming_lead_id(event),
                 )
+
+            custom_fields = {key: True for key in custom_fields}
             return update_lead_handler(
-                conversion_type=conversion_type, event=event
+                conversion_type=conversion_type, event=event, custom_fields=custom_fields
             )
 
         return upload_conversion_handler(
@@ -96,17 +101,25 @@ def click_log_handler(event):
     return persist_clicklog_to_db(body)
 
 
-def update_lead_handler(conversion_type, event):
-    response = click_log_table.query(
-        KeyConditionExpression=Key("pk").eq("click"),
-        FilterExpression=Attr("matched").eq(False),
-        ScanIndexForward=False,
-        Limit=1,
+def update_lead_handler(conversion_type, event, custom_fields):
+    response = (
+        click_log_table.query(
+            KeyConditionExpression=Key("pk").eq("click"),
+            FilterExpression=Attr("matched").eq(False),
+            ScanIndexForward=False,
+            Limit=1,
+        ) 
+        if conversion_type is not GoogleAdsService.ConversionType.DISABLED
+        else None
     )
+
+    custom_fields = {key: True for key in custom_fields}
+
     return update_lead(
-        items=response.get("Items", []),
+        items=response.get("Items", []) if response else None,
         conversion_type=conversion_type,
-        lead_id=extract_incoming_lead_id(event),
+        lead_id= extract_lead_id_from_task_webhook(event) if custom_fields.get("task") else extract_incoming_lead_id(event),
+        custom_fields=custom_fields
     )
 
 
@@ -245,12 +258,13 @@ def persist_clicklog_to_db(event):
         }
 
 
-def update_lead(items, conversion_type, lead_id):
+def update_lead(items, conversion_type, lead_id, custom_fields):
     if not items:
         try:
             kommo_service.update_lead(
                 lead_id=lead_id,
-                source="organic",
+                source="organic" if conversion_type is not GoogleAdsService.ConversionType.DISABLED else None,
+                **custom_fields
             )
 
             logger.info("Lead updated with organic source.")
@@ -289,6 +303,7 @@ def update_lead(items, conversion_type, lead_id):
                 gclid=gclid,
                 gbraid=gbraid,
                 page_path=page_path,
+                **custom_fields
             )
 
             logger.info("Lead updated with cpc source.")

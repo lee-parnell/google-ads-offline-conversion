@@ -171,18 +171,6 @@ class KommoService:
 
         return self._request("GET", f"/leads/{lead_id}", params=params)
 
-    def get_incoming_leads(
-        self, is_sorted=True, filter_pipeline=True, page=1, limit=10
-    ):
-        params: dict[str, Any] = {"limit": limit, "page": page}
-
-        if is_sorted:
-            params["order[created_at]"] = "desc"
-        if filter_pipeline:
-            params["filter[pipeline_id]"] = self.config.target_pipeline_id
-
-        return self._request("GET", "/leads/unsorted", params=params)
-
     def get_incoming_lead_by_id(self, lead_id):
         params = {"with": "contacts"}
 
@@ -203,24 +191,19 @@ class KommoService:
 
         return self._get_contact_data(contact_id=contact_id)
 
-    def get_latest_incoming_lead_id(self):
-        leads = self.get_incoming_leads()
-
-        return int(
-            leads["_embedded"]["unsorted"][0]["_embedded"]["leads"][0]["id"]
-        )
-
     def update_lead(
-        self, lead_id, source, gclid=None, gbraid=None, page_path="/", appointment_time=None
+        self, lead_id, source, gclid=None, gbraid=None, page_path="/", appointment_time=None, lang_fields=None, country_field=None
     ):
         """ Updates Kommo lead entities custom fields.
         """
+        lead = self.get_lead_by_id(lead_id)
+
         fields = {
             "source": source,
             "gclid": gclid,
             "gbraid": gbraid,
             "page_path": page_path,
-            "appointment_time": appointment_time,
+            "appointment_time":lead["closest_task_at"] if appointment_time else None 
         }
 
         custom_fields_values = [

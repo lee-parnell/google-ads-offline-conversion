@@ -23,6 +23,7 @@ class GoogleAdsService:
         corresponding conversion_action_id from the config.
         """
 
+        DISABLED = ("DISABLED_CONVERSION", 0)
         MESSAGE_RECEIVED = ("kommo_message_received", 5)
         APPOINTMENT_MADE = ("appointment_made", 40)
         CONVERTED_LEAD = ("converted_lead", 500)
