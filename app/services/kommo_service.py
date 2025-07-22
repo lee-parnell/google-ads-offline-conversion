@@ -211,25 +211,23 @@ class KommoService:
         )
 
     def update_lead(
-        self, lead_id, source, gclid=None, gbraid=None, page_path="/"
+        self, lead_id, source, gclid=None, gbraid=None, page_path="/", appointment_time=None
     ):
+        """ Updates Kommo lead entities custom fields.
+        """
+        fields = {
+            "source": source,
+            "gclid": gclid,
+            "gbraid": gbraid,
+            "page_path": page_path,
+            "appointment_time": appointment_time,
+        }
+
         custom_fields_values = [
             {
-                "field_id": self.config.field_ids["source"],
-                "values": [{"value": source}],
-            },
-            {
-                "field_id": self.config.field_ids["gclid"],
-                "values": [{"value": gclid}],
-            },
-            {
-                "field_id": self.config.field_ids["gbraid"],
-                "values": [{"value": gbraid}],
-            },
-            {
-                "field_id": self.config.field_ids["page_path"],
-                "values": [{"value": page_path}],
-            },
+                "field_id": self.config.field_ids[field_name],
+                "values": [{"value": field_value}]
+            } for field_name, field_value in fields.items() if field_value is not None
         ]
 
         return self._request(
