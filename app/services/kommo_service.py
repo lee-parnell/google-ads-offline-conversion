@@ -1,9 +1,9 @@
 import requests
 import logging
+import logic
 
 from typing import Any
 from config import KommoConfig
-
 
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ class KommoService:
         }
 
         raw_filtered_leads = self._request("GET", "/leads", params=params)
-        
+
         if not raw_filtered_leads or "_embedded" not in raw_filtered_leads:
             return []
 
@@ -193,10 +193,17 @@ class KommoService:
         return self._get_contact_data(contact_id=contact_id)
 
     def update_lead(
-        self, lead_id, source, gclid=None, gbraid=None, page_path="/", appointment_time=None, lang_fields=None, country_field=None
+        self,
+        lead_id,
+        source,
+        gclid=None,
+        gbraid=None,
+        page_path="/",
+        appointment_time=None,
+        lang_fields=None,
+        country_field=None,
     ):
-        """ Updates Kommo lead entities custom fields.
-        """
+        """Updates Kommo lead entities custom fields."""
         lead = self.get_lead_by_id(lead_id)
 
         fields = {
@@ -204,14 +211,25 @@ class KommoService:
             "gclid": gclid,
             "gbraid": gbraid,
             "page_path": page_path,
-            "appointment_time":lead["closest_task_at"] if appointment_time else None 
+            "appointment_time": (
+                lead["closest_task_at"] if appointment_time else None
+            ),
+            "country": (
+                logic.CountryDetector.detect_country(
+                    self._get_contact_data(lead_id).get("phone", "")
+                )
+                if country_field
+                else None
+            ),
         }
 
         custom_fields_values = [
             {
                 "field_id": self.config.field_ids[field_name],
-                "values": [{"value": field_value}]
-            } for field_name, field_value in fields.items() if field_value is not None
+                "values": [{"value": field_value}],
+            }
+            for field_name, field_value in fields.items()
+            if field_value is not None
         ]
 
         return self._request(

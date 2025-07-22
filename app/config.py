@@ -78,7 +78,9 @@ def load_config():
             "conversion_time": int(os.getenv("KOMMO_CONVERSION_TIME_FIELD_ID")),
             "phone": int(os.getenv("KOMMO_PHONE_FIELD_ID")),
             "email": int(os.getenv("KOMMO_EMAIL_FIELD_ID")),
-            "appointment_time": int(os.getenv("KOMMO_APPOINTMET_TIME_FIELD_ID"))
+            "appointment_time": int(
+                os.getenv("KOMMO_APPOINTMET_TIME_FIELD_ID")
+            ),
         },
         salesbot_ids={
             "next_day_salesbot_id": int(os.getenv("KOMMO_1DAY_SALESBOT_ID")),

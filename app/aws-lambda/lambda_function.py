@@ -19,7 +19,7 @@ CLICK_LOG_TTL_MINUTES = int(os.getenv("CLICK_LOG_TTL_MINUTES", "15"))
 
 # aws resources
 dynamodb = boto3.resource("dynamodb")
-click_log_table = dynamodb.Table(f"{TABLE_PREFIX}_click_logs") # type: ignore
+click_log_table = dynamodb.Table(f"{TABLE_PREFIX}_click_logs")  # type: ignore
 
 # configs
 kommo_config, google_ads_config = config.load_config()
@@ -47,7 +47,9 @@ def lambda_handler(event, context):
 
     if path == "/update-lead" and method == "POST":
         query_string_params = event.get("queryStringParameters", {})
-        multi_query_string_params = event.get("multiValueQueryStringParameters", {}) or {}
+        multi_query_string_params = (
+            event.get("multiValueQueryStringParameters", {}) or {}
+        )
 
         conversion_type_key = query_string_params.get("conversion_type")
         conversion_type = GoogleAdsService.ConversionType[
@@ -67,7 +69,11 @@ def lambda_handler(event, context):
                 conversion_type=conversion_type,
             )
 
-        if custom_fields or conversion_type == GoogleAdsService.ConversionType.MESSAGE_RECEIVED:
+        if (
+            custom_fields
+            or conversion_type
+            == GoogleAdsService.ConversionType.MESSAGE_RECEIVED
+        ):
             if is_manual_import:
                 return upload_conversion_handler(
                     event=event,
@@ -77,7 +83,9 @@ def lambda_handler(event, context):
 
             custom_fields = {key: True for key in custom_fields}
             return update_lead_handler(
-                conversion_type=conversion_type, event=event, custom_fields=custom_fields
+                conversion_type=conversion_type,
+                event=event,
+                custom_fields=custom_fields,
             )
 
         return upload_conversion_handler(
@@ -108,7 +116,7 @@ def update_lead_handler(conversion_type, event, custom_fields):
             FilterExpression=Attr("matched").eq(False),
             ScanIndexForward=False,
             Limit=1,
-        ) 
+        )
         if conversion_type is not GoogleAdsService.ConversionType.DISABLED
         else None
     )
@@ -118,13 +126,19 @@ def update_lead_handler(conversion_type, event, custom_fields):
     return update_lead(
         items=response.get("Items", []) if response else None,
         conversion_type=conversion_type,
-        lead_id= extract_lead_id_from_task_webhook(event) if custom_fields.get("task") else extract_incoming_lead_id(event),
-        custom_fields=custom_fields
+        lead_id=(
+            extract_lead_id_from_task_webhook(event)
+            if custom_fields.get("task")
+            else extract_incoming_lead_id(event)
+        ),
+        custom_fields=custom_fields,
     )
 
 
 def upload_conversion_handler(event, conversion_type, lead_id=None):
-    lead_id = extract_incoming_lead_id(event=event) if lead_id is None else lead_id
+    lead_id = (
+        extract_incoming_lead_id(event=event) if lead_id is None else lead_id
+    )
 
     try:
         google_ads_service.upload_offline_conversion(
@@ -208,14 +222,20 @@ def run_salesbots_handler():
         starts_at=seven_day_window["starts_at"],
         ends_at=seven_day_window["ends_at"],
     )
-    logger.info("Retrieved leads that have due tasks next day: %s", next_day_leads)
-    logger.info("Retrieved leads that have due tasks next week: %s", seven_day_leads)
+    logger.info(
+        "Retrieved leads that have due tasks next day: %s", next_day_leads
+    )
+    logger.info(
+        "Retrieved leads that have due tasks next week: %s", seven_day_leads
+    )
 
     kommo_service.run_salesbot_on_leads(
-        salesbot_id=kommo_config.salesbot_ids.get("next_day_salesbot_id"), lead_ids=next_day_leads
+        salesbot_id=kommo_config.salesbot_ids.get("next_day_salesbot_id"),
+        lead_ids=next_day_leads,
     )
     kommo_service.run_salesbot_on_leads(
-        salesbot_id=kommo_config.salesbot_ids.get("seven_day_salesbot_id"), lead_ids=seven_day_leads
+        salesbot_id=kommo_config.salesbot_ids.get("seven_day_salesbot_id"),
+        lead_ids=seven_day_leads,
     )
 
 
@@ -263,8 +283,13 @@ def update_lead(items, conversion_type, lead_id, custom_fields):
         try:
             kommo_service.update_lead(
                 lead_id=lead_id,
-                source="organic" if conversion_type is not GoogleAdsService.ConversionType.DISABLED else None,
-                **custom_fields
+                source=(
+                    "organic"
+                    if conversion_type
+                    is not GoogleAdsService.ConversionType.DISABLED
+                    else None
+                ),
+                **custom_fields,
             )
 
             logger.info("Lead updated with organic source.")
@@ -303,7 +328,7 @@ def update_lead(items, conversion_type, lead_id, custom_fields):
                 gclid=gclid,
                 gbraid=gbraid,
                 page_path=page_path,
-                **custom_fields
+                **custom_fields,
             )
 
             logger.info("Lead updated with cpc source.")
@@ -337,10 +362,14 @@ def parse_kommo_payload(event):
     query_str = unquote(decoded_str)
     return dict(parse_qsl(query_str))
 
+
 def extract_incoming_lead_id(event):
     payload = parse_kommo_payload(event)
 
-    return payload.get("leads[add][0][id]") or payload.get("leads[status][0][id]")
+    return payload.get("leads[add][0][id]") or payload.get(
+        "leads[status][0][id]"
+    )
+
 
 def extract_lead_id_from_task_webhook(event):
     payload = parse_kommo_payload(event)
