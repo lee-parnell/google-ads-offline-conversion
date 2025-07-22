@@ -111,7 +111,7 @@ def update_lead_handler(conversion_type, event):
 
 
 def upload_conversion_handler(event, conversion_type, lead_id=None):
-    lead_id = extract_lead_id(event=event) if lead_id is None else lead_id
+    lead_id = extract_incoming_lead_id(event=event) if lead_id is None else lead_id
 
     try:
         google_ads_service.upload_offline_conversion(
@@ -315,21 +315,19 @@ def update_lead(items, conversion_type, lead_id):
             }
 
 
-def extract_lead_id(event):
+def parse_kommo_payload(event):
     body = event.get("body", {})
 
     decoded_str = base64.b64decode(body).decode("utf-8")
     query_str = unquote(decoded_str)
-    payload = dict(parse_qsl(query_str))
-
-    return payload["leads[status][0][id]"]
-
+    return dict(parse_qsl(query_str))
 
 def extract_incoming_lead_id(event):
-    body = event.get("body", {})
+    payload = parse_kommo_payload(event)
 
-    decoded_str = base64.b64decode(body).decode("utf-8")
-    query_str = unquote(decoded_str)
-    payload = dict(parse_qsl(query_str))
+    return payload.get("leads[add][0][id]") or payload.get("leads[status][0][id]")
 
-    return payload["leads[add][0][id]"]
+def extract_lead_id_from_task_webhook(event):
+    payload = parse_kommo_payload(event)
+
+    return payload.get("task[add][0][id]") or payload.get("task[update][0][id]")
