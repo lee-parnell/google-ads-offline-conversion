@@ -19,7 +19,7 @@ CLICK_LOG_TTL_MINUTES = int(os.getenv("CLICK_LOG_TTL_MINUTES", "15"))
 
 # aws resources
 dynamodb = boto3.resource("dynamodb")
-click_log_table = dynamodb.Table(f"{TABLE_PREFIX}_click_logs")
+click_log_table = dynamodb.Table(f"{TABLE_PREFIX}_click_logs") # type: ignore
 
 # configs
 kommo_config, google_ads_config = config.load_config()
@@ -38,6 +38,9 @@ def lambda_handler(event, context):
 
     path = event.get("rawPath", "/")
     method = event.get("requestContext")["http"]["method"]
+
+    if path == "/run-salesbots" and method == "POST":
+        return run_salesbots_handler()
 
     if path == "/outbound-click-logs" and method == "POST":
         return click_log_handler(event)
@@ -164,6 +167,43 @@ def upload_conversion_adjustment_handler(event, conversion_type):
             "statusCode": 500,
             "message": "Something went wrong while uploading the click conversion adjustment.",
         }
+
+
+def run_salesbots_handler():
+    now = datetime.now()
+
+    one_day_window = {
+        "starts_at": int((now + timedelta(hours=12)).timestamp()),
+        "ends_at": int((now + timedelta(hours=36)).timestamp()),
+    }
+
+    seven_day_window = {
+        "starts_at": int((now + timedelta(hours=156)).timestamp()),
+        "ends_at": int((now + timedelta(hours=180)).timestamp()),
+    }
+
+    next_day_leads = kommo_service._get_lead_ids_by_pipeline(
+        pipeline_id=kommo_config.base_pipeline_id,
+        stage_id=kommo_config.appointment_stage_id,
+        starts_at=one_day_window["starts_at"],
+        ends_at=one_day_window["ends_at"],
+    )
+
+    seven_day_leads = kommo_service._get_lead_ids_by_pipeline(
+        pipeline_id=kommo_config.base_pipeline_id,
+        stage_id=kommo_config.appointment_stage_id,
+        starts_at=seven_day_window["starts_at"],
+        ends_at=seven_day_window["ends_at"],
+    )
+    logger.info("Retrieved leads that have due tasks next day: %s", next_day_leads)
+    logger.info("Retrieved leads that have due tasks next week: %s", seven_day_leads)
+
+    kommo_service.run_salesbot_on_leads(
+        salesbot_id=kommo_config.salesbot_ids.get("next_day_salesbot_id"), lead_ids=next_day_leads
+    )
+    kommo_service.run_salesbot_on_leads(
+        salesbot_id=kommo_config.salesbot_ids.get("seven_day_salesbot_id"), lead_ids=seven_day_leads
+    )
 
 
 def persist_clicklog_to_db(event):

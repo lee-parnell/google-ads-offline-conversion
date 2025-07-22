@@ -3,13 +3,24 @@ import os
 
 class KommoConfig:
     def __init__(
-        self, base_url, subdomain, access_token, target_pipeline, field_ids
+        self,
+        base_url,
+        subdomain,
+        access_token,
+        target_pipeline,
+        base_pipeline,
+        appointment_stage,
+        field_ids,
+        salesbot_ids,
     ):
         self.base_url = base_url
         self.subdomain: str = subdomain
         self.access_token: str = access_token
         self.target_pipeline_id = target_pipeline
+        self.base_pipeline_id = base_pipeline
+        self.appointment_stage_id = appointment_stage
         self.field_ids = field_ids
+        self.salesbot_ids = salesbot_ids
 
 
 class GoogleAdsConfig:
@@ -53,6 +64,8 @@ def load_config():
         os.getenv("KOMMO_SUBDOMAIN"),
         os.getenv("KOMMO_ACCESS_TOKEN"),
         os.getenv("KOMMO_TARGET_PIPELINE_ID"),
+        os.getenv("KOMMO_BASE_PIPELINE_ID"),
+        os.getenv("KOMMO_APPOINTMENT_STAGE_ID"),
         field_ids={
             "source": int(os.getenv("KOMMO_SOURCE_FIELD_ID")),
             "gclid": int(os.getenv("KOMMO_GCLID_FIELD_ID")),
@@ -65,6 +78,10 @@ def load_config():
             "conversion_time": int(os.getenv("KOMMO_CONVERSION_TIME_FIELD_ID")),
             "phone": int(os.getenv("KOMMO_PHONE_FIELD_ID")),
             "email": int(os.getenv("KOMMO_EMAIL_FIELD_ID")),
+        },
+        salesbot_ids={
+            "next_day_salesbot_id": int(os.getenv("KOMMO_1DAY_SALESBOT_ID")),
+            "seven_day_salesbot_id": int(os.getenv("KOMMO_7DAY_SALESBOT_ID")),
         },
     )
 

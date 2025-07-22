@@ -39,6 +39,10 @@ class KommoService:
                 timeout=10,
             )
             response.raise_for_status()
+
+            if response.status_code == 204 or not response.content.strip():
+                return {}
+
             return response.json()
         except Exception as e:
             logger.error("Request to %s failed. Exception: %s", url, e)
@@ -109,6 +113,9 @@ class KommoService:
         }
 
         raw_filtered_leads = self._request("GET", "/leads", params=params)
+        
+        if not raw_filtered_leads or "_embedded" not in raw_filtered_leads:
+            return []
 
         return list(
             map(
