@@ -4,6 +4,8 @@ import logging
 from typing import Any
 from config import KommoConfig
 
+from lingua import Language, LanguageDetectorBuilder
+
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +125,7 @@ class KommoService:
                 raw_filtered_leads["_embedded"]["leads"],
             )
         )
+    def detect_lang(text_message):
 
     def run_salesbot_on_leads(self, salesbot_id, lead_ids):
         """Executes salesbot on each lead.
